@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Object Count</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+        #countTable {
+            margin: 0 auto;
+            border-collapse: collapse;
+            width: 50%;
+        }
+        #countTable, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Object Count</h1>
+    <table id="countTable">
+        <thead>
+            <tr>
+                <th>Class</th>
+                <th>Count</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Counts will be populated here by jQuery -->
+        </tbody>
+    </table>
+
+    <script>
+        function updateCounts() {
+            $.getJSON('/count', function(data) {
+                var tableBody = $('#countTable tbody');
+                tableBody.empty();
+                $.each(data, function(className, count) {
+                    var row = $('<tr></tr>');
+                    var classCell = $('<td></td>').text(className);
+                    var countCell = $('<td></td>').text(count);
+                    row.append(classCell);
+                    row.append(countCell);
+                    tableBody.append(row);
+                });
+            });
+        }
+
+        $(document).ready(function() {
+            updateCounts();
+            setInterval(updateCounts, 1000);  // Update every second
+        });
+    </script>
+</body>
+</html>
