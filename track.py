@@ -38,6 +38,7 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 count = 0
 data = {}
 class_counts = {}
+products = []
 
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, project, name, exist_ok= \
@@ -243,7 +244,7 @@ def detect(opt):
             os.system('open ' + save_path)
 
 def count_obj(box, w, h, id, class_name):
-    global count, data, class_counts
+    global count, data, class_counts, products
     center_coordinates = (int(box[0] + (box[2] - box[0]) / 2), int(box[1] + (box[3] - box[1]) / 2))
     line_position = h - 200
     if center_coordinates[1] > line_position and id not in data:
@@ -253,11 +254,73 @@ def count_obj(box, w, h, id, class_name):
             class_counts[class_name] = 0
         class_counts[class_name] += 1
 
+        # 상품 정보를 추가합니다.
+        if class_name == "abc_choco_cookie":
+            products.append({
+                "id": 1,
+                "name": "abc_choco_cookie",
+                "quantity": 1,
+                "price": 1000,
+                "image": "static/choco.jpg"
+            })
+        elif class_name == "chicchoc":
+            products.append({
+                "id": 2,
+                "name": "chicchoc",
+                "quantity": 1,
+                "price": 500,
+                "image": "static/chic.jpg"
+            })
+        elif class_name == "pocachip_original":
+            products.append({
+                "id": 3,
+                "name": "pocachip_original",
+                "quantity": 1,
+                "price": 800,
+                "image": "static/poka.jpg"
+            })
+        elif class_name =="osatsu":
+            products.append({
+                "id": 4,
+                "name": 'osatsu',
+                "quantity": 1,
+                "price": 1000,  # 기본 가격
+                "image": "static/osa.jpg"  # 기본 이미지
+            })
+
+# Flask 서버 코드 추가
+from flask import Flask, render_template, jsonify, request
+import threading
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/count')
+def get_count():
+    global class_counts, products
+    return jsonify(products)
+
+@app.route('/reset', methods=['POST'])
+def reset_count():
+    global count, data, class_counts, products
+    count = 0
+    data = {}
+    class_counts = {}
+    products = []
+    return jsonify({"status": "reset successful"})
+
+def start_flask():
+    app.run(debug=True, use_reloader=False)
+
 if __name__ == '__main__':
+    threading.Thread(target=start_flask).start()
+    
     parser = argparse.ArgumentParser()
-    parser.add_argument('--yolo_model', nargs='+', type=str, default='yolov5n.pt', help='model.pt path(s)')
+    parser.add_argument('--yolo_model', nargs='+', type=str, default='best.pt', help='model.pt path(s)')
     parser.add_argument('--deep_sort_model', type=str, default='osnet_x0_25')
-    parser.add_argument('--source', type=str, default='videos/Traffic.mp4', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--source', type=str, default='0', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='inference/output', help='output folder')  # output folder
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[480], help='inference size h,w')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='object confidence threshold')
@@ -267,7 +330,6 @@ if __name__ == '__main__':
     parser.add_argument('--show-vid', action='store_false', help='display tracking video results')
     parser.add_argument('--save-vid', action='store_true', help='save video tracking results')
     parser.add_argument('--save-txt', action='store_true', help='save MOT compliant results to *.txt')
-    # class 0 is person, 1 is bycicle, 2 is car... 79 is oven
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 16 17')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
