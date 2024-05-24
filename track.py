@@ -206,7 +206,7 @@ def detect(opt):
                 thickness = 3
                 org = (150, 150)
                 font = cv2.FONT_HERSHEY_SIMPLEX
-                fontScale = 3
+                fontScale = 1
                 cv2.putText(im0, str(count), org, font,
                             fontScale, color, thickness, cv2.LINE_AA)
                 y_offset = 200
@@ -287,6 +287,14 @@ def count_obj(box, w, h, id, class_name):
                 "price": 1000,  # 기본 가격
                 "image": "static/osa.jpg"  # 기본 이미지
             })
+        elif class_name =="turtle_chips":
+            products.append({
+                "id": 4,
+                "name": 'turtle_chips',
+                "quantity": 1,
+                "price": 1500,  # 기본 가격
+                "image": "static/turtle.jpg"  # 기본 이미지
+            })    
 
 # Flask 서버 코드 추가
 from flask import Flask, render_template, jsonify, request
