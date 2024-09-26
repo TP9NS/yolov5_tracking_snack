@@ -1,15 +1,6 @@
 import os
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-
 import sys
-sys.path.insert(0, './yolov5')
-
 import argparse
-import os
 import platform
 import shutil
 import time
@@ -17,10 +8,11 @@ from pathlib import Path
 import cv2
 import torch
 import torch.backends.cudnn as cudnn
+import requests  # 서버에 상품 번호를 전송하기 위한 라이브러리
+
+sys.path.insert(0, './yolov5')
 
 from yolov5.models.experimental import attempt_load
-from yolov5.utils.downloads import attempt_download
-from yolov5.models.common import DetectMultiBackend
 from yolov5.utils.datasets import LoadImages, LoadStreams
 from yolov5.utils.general import (LOGGER, check_img_size, non_max_suppression, scale_coords, 
                                   check_imshow, xyxy2xywh, increment_path)
@@ -28,6 +20,7 @@ from yolov5.utils.torch_utils import select_device, time_sync
 from yolov5.utils.plots import Annotator, colors
 from deep_sort.utils.parser import get_config
 from deep_sort.deep_sort import DeepSort
+from yolov5.models.common import DetectMultiBackend
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 deepsort root directory
@@ -35,17 +28,57 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
+# 서버 주소 (서버가 실행되는 IP와 포트를 지정합니다)
+SERVER_URL = 'http://127.0.0.1:5000/product'  # 서버 IP 주소로 변경 필요
+# 전역 변수 초기화
 count = 0
-data = {}
-class_counts = {}
-products = []
+data = {    1: {"name": "abc_choco_cookie", "price": 1000, "image": "static/choco.jpg"},
+    2: {"name": "chicchoc", "price": 500, "image": "static/chic.jpg"},
+    3: {"name": "pocachip_original", "price": 800, "image": "static/poka.jpg"},
+    4: {"name": "osatsu", "price": 1000, "image": "static/osa.jpg"},
+    5: {"name": "turtle_chips", "price": 1500, "image": "static/turtle.jpg"}}  # 객체 ID를 추적하기 위한 사전
+#CLASS 이름으로 상품번호검색
+def find_number_by_name(name):
+    global data
+    for key, value in data.items():
+        if value["name"] == name:
+            return key
+    return None
+# 상품 번호를 서버에 전송하는 함수
+
+def send_product_to_server(product_id):
+    try:
+        # 서버로 상품 번호를 전송
+        response = requests.post(SERVER_URL, json={"product_id": product_id})
+        if response.status_code == 200:
+            product_info = response.json()
+            print(f"상품 정보: {product_info['name']}, 가격: {product_info['price']}")
+        else:
+            print(f"서버에서 오류가 발생했습니다: {response.status_code}")
+    except Exception as e:
+        print(f"서버와 통신 중 오류가 발생했습니다: {e}")
+
+# 객체가 선을 지나갈 때 상품 번호를 전송하는 함수
+def count_obj(box, w, h, id, class_name):
+    global count, data
+    # 객체의 중앙 좌표 계산
+    center_coordinates = (int(box[0] + (box[2] - box[0]) / 2), int(box[1] + (box[3] - box[1]) / 2))
+    line_position = w - 200  # 화면 너비에서 200px 떨어진 위치에 선을 긋습니다.
+
+    # 객체가 선을 지나갔는지 확인
+    if center_coordinates[0] > line_position and id not in data:
+        count += 1
+        data[id] = True
+        print(f"객체가 선을 넘었습니다: {class_name}")
+        # 객체가 선을 지나가면 서버로 상품 번호를 전송합니다.
+        print(class_name)
+        send_product_to_server(find_number_by_name(class_name))
 
 def detect(opt):
-    out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, project, name, exist_ok= \
+    out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, project, name, exist_ok = \
         opt.output, opt.source, opt.yolo_model, opt.deep_sort_model, opt.show_vid, opt.save_vid, \
         opt.save_txt, opt.imgsz, opt.evaluate, opt.half, opt.project, opt.name, opt.exist_ok
-    webcam = source == '0' or source.startswith(
-        'rtsp') or source.startswith('http') or source.endswith('.txt')
+    webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # initialize deepsort
     cfg = get_config()
@@ -85,11 +118,9 @@ def detect(opt):
 
     # Set Dataloader
     vid_path, vid_writer = None, None
-    # Check if environment supports image displays
     if show_vid:
         show_vid = check_imshow()
 
-    # Dataloader
     if webcam:
         show_vid = check_imshow()
         cudnn.benchmark = True  # set True to speed up constant image size inference
@@ -100,15 +131,10 @@ def detect(opt):
         bs = 1  # batch_size
     vid_path, vid_writer = [None] * bs, [None] * bs
 
-    # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
-
-    # extract what is in between the last '/' and last '.'
-    txt_file_name = source.split('/')[-1].split('.')[0]
-    txt_path = str(Path(save_dir)) + '/' + txt_file_name + '.txt'
-
     if pt and device.type != 'cpu':
         model(torch.zeros(1, 3, *imgsz).to(device).type_as(next(model.model.parameters())))  # warmup
+
     dt, seen = [0.0, 0.0, 0.0, 0.0], 0
     for frame_idx, (path, img, im0s, vid_cap, s) in enumerate(dataset):
         t1 = time_sync()
@@ -131,200 +157,68 @@ def detect(opt):
         dt[2] += time_sync() - t3
 
         # Process detections
-        for i, det in enumerate(pred):  # detections per image
+        for i, det in enumerate(pred):
             seen += 1
-            if webcam:  # batch_size >= 1
+            if webcam:
                 p, im0, _ = path[i], im0s[i].copy(), dataset.count
                 s += f'{i}: '
             else:
                 p, im0, _ = path, im0s.copy(), getattr(dataset, 'frame', 0)
 
-            p = Path(p)  # to Path
-            save_path = str(save_dir / p.name)  # im.jpg, vid.mp4, ...
-            s += '%gx%g ' % img.shape[2:]  # print string
+            p = Path(p)
+            save_path = str(save_dir / p.name)
+            s += '%gx%g ' % img.shape[2:]
 
             annotator = Annotator(im0, line_width=1, pil=not ascii)
             w, h = im0.shape[1], im0.shape[0]
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(
-                    img.shape[2:], det[:, :4], im0.shape).round()
+                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
 
-                # Print results
                 for c in det[:, -1].unique():
                     n = (det[:, -1] == c).sum()  # detections per class
-                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "
 
                 xywhs = xyxy2xywh(det[:, 0:4])
                 confs = det[:, 4]
                 clss = det[:, 5]
 
-                # pass detections to deepsort
-                t4 = time_sync()
+                # Pass detections to deepsort
                 outputs = deepsort.update(xywhs.cpu(), confs.cpu(), clss.cpu(), im0)
-                t5 = time_sync()
-                dt[3] += t5 - t4
 
-                # draw boxes for visualization
                 if len(outputs) > 0:
-                    for j, (output, conf) in enumerate(zip(outputs, confs)):
-
+                    for output in outputs:
                         bboxes = output[0:4]
                         id = output[4]
                         cls = output[5]
-                        # count only if object crosses the line
-                        count_obj(bboxes, w, h, id, names[cls])
-                        c = int(cls)  # integer class
-                        label = f'{id} {names[c]} {conf:.2f}'
-                        annotator.box_label(bboxes, label, color=colors(c, True))
+                        label = f'{id} {names[int(cls)]}'
+                        annotator.box_label(bboxes, label, color=colors(int(cls), True))
 
-                        if save_txt:
-                            # to MOT format
-                            bbox_left = output[0]
-                            bbox_top = output[1]
-                            bbox_w = output[2] - output[0]
-                            bbox_h = output[3] - output[1]
-                            # Write MOT compliant results to file
-                            with open(txt_path, 'a') as f:
-                                f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
-                                                               bbox_top, bbox_w, bbox_h, -1, -1, -1, -1))
+                        # 객체가 선을 넘으면 서버로 상품 번호를 전송합니다.
+                        count_obj(bboxes, w, h, id, names[int(cls)])
 
-                LOGGER.info(f'{s}Done. YOLO:({t3 - t2:.3f}s), DeepSort:({t5 - t4:.3f}s)')
+                LOGGER.info(f'{s}Done.')
 
             else:
                 deepsort.increment_ages()
-                LOGGER.info('No detections')
 
-            # Stream results
+            # Stream results and draw the line
             im0 = annotator.result()
+
+            # 화면에 선을 그립니다 (화면 오른쪽에서 200px 떨어진 위치)
+            line_position = w - 200
+            color = (0, 255, 0)  # 초록색 선
+            thickness = 2
+            cv2.line(im0, (line_position, 0), (line_position, h), color, thickness)
+
             if show_vid:
-                global count, class_counts
-                color = (0, 255, 0)
-                start_point = (0, h - 200)
-                end_point = (w, h - 200)
-                cv2.line(im0, start_point, end_point, color, thickness=2)
-                thickness = 3
-                org = (150, 150)
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                fontScale = 1
-                cv2.putText(im0, str(count), org, font,
-                            fontScale, color, thickness, cv2.LINE_AA)
-                y_offset = 200
-                for class_name, class_count in class_counts.items():
-                    cv2.putText(im0, f'{class_name}: {class_count}', (50, y_offset), font,
-                                fontScale, color, thickness, cv2.LINE_AA)
-                    y_offset += 50
                 cv2.imshow(str(p), im0)
-                if cv2.waitKey(1) == ord('q'):  # q to quit
+                if cv2.waitKey(1) == ord('q'):
                     raise StopIteration
 
-            # Save results (image with detections)
-            if save_vid:
-                if vid_path != save_path:  # new video
-                    vid_path = save_path
-                    if isinstance(vid_writer, cv2.VideoWriter):
-                        vid_writer.release()  # release previous video writer
-                    if vid_cap:  # video
-                        fps = vid_cap.get(cv2.CAP_PROP_FPS)
-                        w = int(vid_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        h = int(vid_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    else:  # stream
-                        fps, w, h = 30, im0.shape[1], im0.shape[0]
-
-                    vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
-                vid_writer.write(im0)
-
-    # Print results
-    t = tuple(x / seen * 1E3 for x in dt)  # speeds per image
-    LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS, %.1fms deep sort update \
-        per image at shape {(1, 3, *imgsz)}' % t)
-    if save_txt or save_vid:
-        print('Results saved to %s' % save_path)
-        if platform == 'darwin':  # MacOS
-            os.system('open ' + save_path)
-
-def count_obj(box, w, h, id, class_name):
-    global count, data, class_counts, products
-    center_coordinates = (int(box[0] + (box[2] - box[0]) / 2), int(box[1] + (box[3] - box[1]) / 2))
-    line_position = h - 200
-    if center_coordinates[1] > line_position and id not in data:
-        count += 1
-        data[id] = True
-        if class_name not in class_counts:
-            class_counts[class_name] = 0
-        class_counts[class_name] += 1
-
-        # 상품 정보를 추가합니다.
-        if class_name == "abc_choco_cookie":
-            products.append({
-                "id": 1,
-                "name": "abc_choco_cookie",
-                "quantity": 1,
-                "price": 1000,
-                "image": "static/choco.jpg"
-            })
-        elif class_name == "chicchoc":
-            products.append({
-                "id": 2,
-                "name": "chicchoc",
-                "quantity": 1,
-                "price": 500,
-                "image": "static/chic.jpg"
-            })
-        elif class_name == "pocachip_original":
-            products.append({
-                "id": 3,
-                "name": "pocachip_original",
-                "quantity": 1,
-                "price": 800,
-                "image": "static/poka.jpg"
-            })
-        elif class_name =="osatsu":
-            products.append({
-                "id": 4,
-                "name": 'osatsu',
-                "quantity": 1,
-                "price": 1000,  # 기본 가격
-                "image": "static/osa.jpg"  # 기본 이미지
-            })
-        elif class_name =="turtle_chips":
-            products.append({
-                "id": 4,
-                "name": 'turtle_chips',
-                "quantity": 1,
-                "price": 1500,  # 기본 가격
-                "image": "static/turtle.jpg"  # 기본 이미지
-            })    
-
-# Flask 서버 코드 추가
-from flask import Flask, render_template, jsonify, request
-import threading
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/count')
-def get_count():
-    global class_counts, products
-    return jsonify(products)
-
-@app.route('/reset', methods=['POST'])
-def reset_count():
-    global count, data, class_counts, products
-    count = 0
-    data = {}
-    class_counts = {}
-    products = []
-    return jsonify({"status": "reset successful"})
-
-def start_flask():
-    app.run(debug=True, use_reloader=False)
+    LOGGER.info(f"Speed: {t3 - t2:.1f}ms inference, {t2 - t1:.1f}ms NMS per image")
 
 if __name__ == '__main__':
-    threading.Thread(target=start_flask).start()
-    
     parser = argparse.ArgumentParser()
     parser.add_argument('--yolo_model', nargs='+', type=str, default='best.pt', help='model.pt path(s)')
     parser.add_argument('--deep_sort_model', type=str, default='osnet_x0_25')
@@ -335,7 +229,7 @@ if __name__ == '__main__':
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
     parser.add_argument('--fourcc', type=str, default='mp4v', help='output video codec (verify ffmpeg support)')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--show-vid', action='store_false', help='display tracking video results')
+    parser.add_argument('--show-vid', action='store_true', help='display tracking video results')
     parser.add_argument('--save-vid', action='store_true', help='save video tracking results')
     parser.add_argument('--save-txt', action='store_true', help='save MOT compliant results to *.txt')
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 16 17')
