@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>계산대</title>
+    <title>키오스크</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -35,6 +35,12 @@
             padding: 10px 0;
             border-bottom: 1px solid #ddd;
         }
+        .product-item img {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            margin-right: 20px;
+        }
         .total {
             margin-top: 20px;
             font-size: 18px;
@@ -56,13 +62,16 @@
 </head>
 <body>
     <div class="container">
-        <h1>계산대</h1>
+        <h1>장바구니</h1>
         <div class="product-list" id="product-list">
             <!-- 상품 목록이 여기에 동적으로 추가됩니다 -->
             {% for product in products %}
             <div class="product-item">
-                <span>{{ product.name }}</span>
-                <span>{{ product.price }}원</span>
+                <img src="{{ product.image_url }}" alt="{{ product.name }}">
+                <div>
+                    <span>{{ product.name }}</span><br>
+                    <span>{{ product.price }}원</span>
+                </div>
             </div>
             {% endfor %}
         </div>
