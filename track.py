@@ -9,7 +9,7 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 import requests  # 서버에 상품 번호를 전송하기 위한 라이브러리
-
+import threading
 sys.path.insert(0, './yolov5')
 
 from yolov5.models.experimental import attempt_load
@@ -29,14 +29,15 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 # 서버 주소 (서버가 실행되는 IP와 포트를 지정합니다)
-SERVER_URL = 'http://127.0.0.1:5000/product'  # 서버 IP 주소로 변경 필요
+SERVER_URL = 'http://172.20.10.4:5000/product'  # 서버 IP 주소로 변경 필요
 # 전역 변수 초기화
 count = 0
-data = {    1: {"name": "abc_choco_cookie", "price": 1000, "image": "static/choco.jpg"},
+"""data = {    1: {"name": "abc_choco_cookie", "price": 1000, "image": "static/choco.jpg"},
     2: {"name": "chicchoc", "price": 500, "image": "static/chic.jpg"},
     3: {"name": "pocachip_original", "price": 800, "image": "static/poka.jpg"},
     4: {"name": "osatsu", "price": 1000, "image": "static/osa.jpg"},
-    5: {"name": "turtle_chips", "price": 1500, "image": "static/turtle.jpg"}}  # 객체 ID를 추적하기 위한 사전
+    5: {"name": "turtle_chips", "price": 1500, "image": "static/turtle.jpg"},  # 객체 ID를 추적하기 위한 사전
+    7: {"name": "concho", "price": 1500, "image": "static/turtle.jpg"}}
 #CLASS 이름으로 상품번호검색
 def find_number_by_name(name):
     global data
@@ -44,35 +45,51 @@ def find_number_by_name(name):
         if value["name"] == name:
             return key
     return None
-# 상품 번호를 서버에 전송하는 함수
+# 상품 번호를 서버에 전송하는 함수"""
 
-def send_product_to_server(product_id):
+# 전역 변수 초기화
+count = 0
+passed_objects = {}  # 선을 넘은 객체를 기록하는 사전
+
+"""def send_product_to_server(product_name):
     try:
         # 서버로 상품 번호를 전송
-        response = requests.post(SERVER_URL, json={"product_id": product_id})
+        response = requests.post(SERVER_URL, json={"product_name": product_name})
         if response.status_code == 200:
             product_info = response.json()
             print(f"상품 정보: {product_info['name']}, 가격: {product_info['price']}")
         else:
             print(f"서버에서 오류가 발생했습니다: {response.status_code}")
     except Exception as e:
-        print(f"서버와 통신 중 오류가 발생했습니다: {e}")
-
-# 객체가 선을 지나갈 때 상품 번호를 전송하는 함수
-def count_obj(box, w, h, id, class_name):
-    global count, data
+        print(f"서버와 통신 중 오류가 발생했습니다: {e}")"""
+def send_product_to_server_async(product_name):
+    # 비동기 요청을 보낼 함수
+    def send_request():
+        try:
+            requests.post(SERVER_URL, json={"product_name": product_name})
+            print(f"{product_name} 정보를 서버에 성공적으로 전송했습니다.")
+        except Exception as e:
+            print(f"서버와 통신 중 오류가 발생했습니다: {e}")
+    
+    # 새로운 스레드 생성 후 시작
+    thread = threading.Thread(target=send_request)
+    thread.start()
+# 객체가 선을 지나갈 때 상품 이름을 전송하는 함수
+def count_obj(box, w, h, obj_id, class_name):
+    global count, passed_objects
     # 객체의 중앙 좌표 계산
     center_coordinates = (int(box[0] + (box[2] - box[0]) / 2), int(box[1] + (box[3] - box[1]) / 2))
     line_position = w - 200  # 화면 너비에서 200px 떨어진 위치에 선을 긋습니다.
 
-    # 객체가 선을 지나갔는지 확인
-    if center_coordinates[0] > line_position and id not in data:
+    # 객체가 선을 넘었는지 확인하고, 이미 넘은 객체는 무시
+    if center_coordinates[0] > line_position and obj_id not in passed_objects:
         count += 1
-        data[id] = True
+        passed_objects[obj_id] = True  # 객체가 선을 넘었음을 기록
         print(f"객체가 선을 넘었습니다: {class_name}")
-        # 객체가 선을 지나가면 서버로 상품 번호를 전송합니다.
-        print(class_name)
-        send_product_to_server(find_number_by_name(class_name))
+        
+        # 서버로 상품 이름을 전송
+        send_product_to_server_async(class_name)
+
 
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, project, name, exist_ok = \
@@ -211,8 +228,10 @@ def detect(opt):
             thickness = 2
             cv2.line(im0, (line_position, 0), (line_position, h), color, thickness)
 
+            #해상도 조절
+            im0_resized = cv2.resize(im0,(640,640))
             if show_vid:
-                cv2.imshow(str(p), im0)
+                cv2.imshow(str(p), im0_resized)
                 if cv2.waitKey(1) == ord('q'):
                     raise StopIteration
 
@@ -220,13 +239,13 @@ def detect(opt):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--yolo_model', nargs='+', type=str, default='best.pt', help='model.pt path(s)')
+    parser.add_argument('--yolo_model', nargs='+', type=str, default='plzlast.pt', help='model.pt path(s)')
     parser.add_argument('--deep_sort_model', type=str, default='osnet_x0_25')
     parser.add_argument('--source', type=str, default='0', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='inference/output', help='output folder')  # output folder
-    parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[480], help='inference size h,w')
-    parser.add_argument('--conf-thres', type=float, default=0.5, help='object confidence threshold')
-    parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
+    parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
+    parser.add_argument('--conf-thres', type=float, default=0.30, help='object confidence threshold')
+    parser.add_argument('--iou-thres', type=float, default=0.50, help='IOU threshold for NMS')
     parser.add_argument('--fourcc', type=str, default='mp4v', help='output video codec (verify ffmpeg support)')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--show-vid', action='store_true', help='display tracking video results')

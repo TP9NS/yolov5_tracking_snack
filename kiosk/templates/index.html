@@ -65,23 +65,44 @@
         <h1>장바구니</h1>
         <div class="product-list" id="product-list">
             <!-- 상품 목록이 여기에 동적으로 추가됩니다 -->
-            {% for product in products %}
-            <div class="product-item">
-                <img src="{{ product.image_url }}" alt="{{ product.name }}">
-                <div>
-                    <span>{{ product.name }}</span><br>
-                    <span>{{ product.price }}원</span>
-                </div>
-            </div>
-            {% endfor %}
         </div>
         <div class="total">
-            총 금액: <span id="total-amount">{{ products | sum(attribute='price') }}원</span>
+            총 금액: <span id="total-amount">0원</span>
         </div>
         <button onclick="completePayment()">결제 완료</button>
     </div>
 
     <script>
+        // 장바구니 상품 목록 업데이트
+        function updateCart() {
+            fetch('/get_cart')
+                .then(response => response.json())
+                .then(products => {
+                    const productList = document.getElementById('product-list');
+                    productList.innerHTML = ''; // 기존 목록 초기화
+
+                    let totalAmount = 0;
+
+                    products.forEach(product => {
+                        // 상품 정보를 목록에 추가
+                        const productItem = document.createElement('div');
+                        productItem.className = 'product-item';
+                        productItem.innerHTML = `
+                            <img src="${product.image_url}" alt="${product.name}">
+                            <div>
+                                <span>${product.name}</span><br>
+                                <span>${product.price}원</span>
+                                <span>${weight}</span>
+                            </div>
+                        `;
+                        productList.appendChild(productItem);
+                        totalAmount += product.price;
+                    });
+
+                    document.getElementById('total-amount').textContent = `${totalAmount}원`;
+                });
+        }
+
         function completePayment() {
             fetch('/clear_cart', {
                 method: 'POST'
@@ -90,10 +111,16 @@
             .then(data => {
                 if (data.status === 'cart cleared') {
                     alert('결제가 완료되었습니다!');
-                    window.location.reload();  // 페이지 새로고침
+                    updateCart();  
+                } else if (data.status === 'weight mismatch') {
+                    alert('상품 무게가 맞지 않습니다. 상품 인식을 다시 해주세요.');
+                    updateCart();  // 장바구니 초기화
                 }
             });
         }
+
+        // 주기적으로 장바구니 상태를 갱신 (2초마다)
+        setInterval(updateCart, 2000);
     </script>
 </body>
 </html>
