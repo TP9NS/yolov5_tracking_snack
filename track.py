@@ -29,7 +29,7 @@ if str(ROOT) not in sys.path:
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 # 서버 주소 (서버가 실행되는 IP와 포트를 지정합니다)
-SERVER_URL = 'http://172.20.10.4:5000/product'  # 서버 IP 주소로 변경 필요
+SERVER_URL = 'http://192.168.1.3:5000/product'  # 서버 IP 주소로 변경 필요
 # 전역 변수 초기화
 count = 0
 """data = {    1: {"name": "abc_choco_cookie", "price": 1000, "image": "static/choco.jpg"},
@@ -39,7 +39,7 @@ count = 0
     5: {"name": "turtle_chips", "price": 1500, "image": "static/turtle.jpg"},  # 객체 ID를 추적하기 위한 사전
     7: {"name": "concho", "price": 1500, "image": "static/turtle.jpg"}}
 #CLASS 이름으로 상품번호검색
-def find_number_by_name(name):
+def find_number_by_name(name)*
     global data
     for key, value in data.items():
         if value["name"] == name:
@@ -79,7 +79,7 @@ def count_obj(box, w, h, obj_id, class_name):
     global count, passed_objects
     # 객체의 중앙 좌표 계산
     center_coordinates = (int(box[0] + (box[2] - box[0]) / 2), int(box[1] + (box[3] - box[1]) / 2))
-    line_position = w - 200  # 화면 너비에서 200px 떨어진 위치에 선을 긋습니다.
+    line_position = w - 300  # 화면 너비에서 200px 떨어진 위치에 선을 긋습니다.
 
     # 객체가 선을 넘었는지 확인하고, 이미 넘은 객체는 무시
     if center_coordinates[0] > line_position and obj_id not in passed_objects:
@@ -223,7 +223,7 @@ def detect(opt):
             im0 = annotator.result()
 
             # 화면에 선을 그립니다 (화면 오른쪽에서 200px 떨어진 위치)
-            line_position = w - 200
+            line_position = w - 300
             color = (0, 255, 0)  # 초록색 선
             thickness = 2
             cv2.line(im0, (line_position, 0), (line_position, h), color, thickness)

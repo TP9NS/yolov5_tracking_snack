@@ -8,7 +8,7 @@ cart = []
 total_weight = 0
 
 # 서버 주소
-SERVER_URL = 'http://172.20.10.4:5000/update_stock'
+SERVER_URL = 'http://172.20.14.4:5000/update_stock'
 
 # 키오스크 서버가 상품 정보를 받는 엔드포인트
 @app.route('/receive_product', methods=['POST'])
@@ -29,6 +29,8 @@ def receive_weight():
     data = request.get_json()
     global total_weight 
     total_weight = data.get('weight')
+    total_weight= total_weight.strip()
+    
     print(f"총 무게: {total_weight}")
     return jsonify({"status": "received"}), 200
 
@@ -41,7 +43,7 @@ def get_cart():
 def clear_cart():
     global total_weight
     cart_weight = sum(item['weight'] for item in cart)
-    weight_diff = abs(total_weight - cart_weight) / cart_weight
+    weight_diff = abs(float(total_weight) - float(cart_weight)) / float(cart_weight)
 
     if weight_diff <= 0.03:  # 오차가 ±3% 이내인 경우에만 결제 성공
         try:
